@@ -7,6 +7,8 @@
 #include "mmu.h"
 #include "proc.h"
 
+int page_allocator_type = 0;   // CS 3320 project 2
+
 extern int free_frame_cnt; // CS3320 for project3
 int
 sys_fork(void)
@@ -100,17 +102,11 @@ int sys_print_free_frame_cnt(void)
 
 // CS 3320 set page allocator
 extern int page_allocator_type;
+
 int sys_set_page_allocator(void)
 {
-    if(argint(0,&page_allocator_type) < 0){
+    if(argint(0, &page_allocator_type) < 0){
         return -1;
-    }
-    // please remove the following 
-    // when you start implementing your page allocator
-    if (page_allocator_type == 1)
-    {
-        cprintf("Your lazy allocator has not been implemented!\n");
-	return -1;
     }
     return 0;
 }

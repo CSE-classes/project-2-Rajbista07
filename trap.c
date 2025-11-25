@@ -14,6 +14,9 @@ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
+extern int page_allocator_type;
+int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
+
 void
 tvinit(void)
 {
@@ -22,7 +25,7 @@ tvinit(void)
   for(i = 0; i < 256; i++)
     SETGATE(idt[i], 0, SEG_KCODE<<3, vectors[i], 0);
   SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, vectors[T_SYSCALL], DPL_USER);
-  
+
   initlock(&tickslock, "time");
 }
 
@@ -46,13 +49,38 @@ trap(struct trapframe *tf)
     return;
   }
  // CS 3320 project 2
- // You might need to change the folloiwng default page fault handling
- // for your project 2
- if(tf->trapno == T_PGFLT){                 // CS 3320 project 2
-    uint faulting_va;                       // CS 3320 project 2
-    faulting_va = rcr2();                   // CS 3320 project 2
-    cprintf("Unhandled page fault for va:0x%x!\n", faulting_va);     // CS 3320 project 2
- }
+if(tf->trapno == T_PGFLT){
+  if(page_allocator_type == 1){
+    struct proc *p = proc;
+    uint va = rcr2();
+    uint aligned = PGROUNDDOWN(va);
+
+    // illegal access: above heap break or in kernel space
+    if(aligned >= p->sz || aligned >= KERNBASE){
+      cprintf("Unhandled page fault for va:0x%x!\n", va);
+      // let normal xv6 kill the process later
+    } else {
+      char *mem = kalloc();
+      if(mem == 0){
+        cprintf("kalloc failed\n");
+        p->killed = 1;
+      } else {
+        memset(mem, 0, PGSIZE);
+        if(mappages(p->pgdir, (void*)aligned, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+          kfree(mem);
+          p->killed = 1;
+        } else {
+          // handled successfully
+          return;
+        }
+      }
+    }
+  } else {
+    // default allocator path
+    uint faulting_va = rcr2();
+    cprintf("Unhandled page fault for va:0x%x!\n", faulting_va);
+  }
+}
 
 
   switch(tf->trapno){

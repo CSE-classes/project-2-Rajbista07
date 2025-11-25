@@ -7,7 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
-int page_allocator_type = 0;   // CS 3320 project 2
+extern int page_allocator_type;
 
 struct {
   struct spinlock lock;
@@ -57,11 +57,11 @@ found:
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
-  
+
   // Leave room for trap frame.
   sp -= sizeof *p->tf;
   p->tf = (struct trapframe*)sp;
-  
+
   // Set up new context to start executing at forkret,
   // which returns to trapret.
   sp -= 4;
@@ -82,7 +82,7 @@ userinit(void)
 {
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-  
+
   p = allocproc();
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
@@ -104,27 +104,37 @@ userinit(void)
   p->state = RUNNABLE;
 }
 
-// Grow current process's memory by n bytes.
-// Return 0 on success, -1 on failure.
+// Grow current process's memory by n bytes.int
 int
 growproc(int n)
 {
   uint sz;
-  
   sz = proc->sz;
+
   if(n > 0){
-    if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0)
-    {
-      cprintf("Allocating pages failed!\n"); // CS3320: project 2
-      return -1;
+    if(page_allocator_type == 0){
+      // DEFAULT allocator: allocate physical pages immediately
+      if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0){
+        cprintf("Allocating pages failed!\n");
+        return -1;
+      }
+    } else {
+      // LAZY allocator: do NOT allocate pages here
+      // Only increase virtual size (program break)
+      if(PGROUNDUP(sz + n) >= KERNBASE){
+        cprintf("Allocating pages failed!\n");
+        return -1;
+      }
+      sz = sz + n;
     }
   } else if(n < 0){
-    if((sz = deallocuvm(proc->pgdir, sz, sz + n)) == 0)
-    {
-      cprintf("Deallocating pages failed!\n"); // CS3320: project 2
+    // Shrinking: always free pages normally
+    if((sz = deallocuvm(proc->pgdir, sz, sz + n)) == 0){
+      cprintf("Deallocating pages failed!\n");
       return -1;
     }
   }
+
   proc->sz = sz;
   switchuvm(proc);
   return 0;
